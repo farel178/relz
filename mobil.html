@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Game Mobil-Mobilan Final</title>
+  <style>
+    body {
+      margin: 0;
+      background: #000;
+      font-family: 'Courier New', monospace;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      color: #fff;
+    }
+
+    #gameContainer {
+      width: 400px;
+      height: 600px;
+      background: #222;
+      border: 4px solid #fff;
+      position: relative;
+      overflow: hidden;
+    }
+
+    #roadLines, .line {
+      position: absolute;
+      width: 10px;
+      height: 40px;
+      background: #fff;
+      left: 195px;
+    }
+
+    #car {
+      width: 50px;
+      height: 100px;
+      position: absolute;
+      bottom: 20px;
+      left: 175px;
+      background-size: cover;
+      z-index: 2;
+    }
+
+    .obstacle {
+      position: absolute;
+      width: 50px;
+      height: 100px;
+      background: url("https://i.ibb.co/XzqfzJ6/obstacle.png") no-repeat center/cover;
+      top: -100px;
+      z-index: 2;
+    }
+
+    #scoreBoard {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      font-size: 16px;
+      z-index: 3;
+    }
+
+    #overlay, #gameOver {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      background: rgba(0,0,0,0.9);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 20px;
+      z-index: 4;
+    }
+
+    button {
+      padding: 10px 20px;
+      font-size: 18px;
+      background: #fff;
+      color: #000;
+      border: none;
+      cursor: pointer;
+      border-radius: 5px;
+    }
+
+    .car-option {
+      width: 50px;
+      height: 100px;
+      background-size: cover;
+      margin: 5px;
+      cursor: pointer;
+      border: 2px solid transparent;
+    }
+
+    .car-option.selected {
+      border-color: yellow;
+    }
+  </style>
+</head>
+<body>
+<div id="gameContainer">
+  <div id="roadLines"></div>
+  <div id="car"></div>
+  <div id="scoreBoard">Skor: 0 | Tertinggi: 0</div>
+
+  <!-- Menu awal -->
+  <div id="overlay">
+    <h2>🚗 Pilih Mobilmu 🚗</h2>
+    <div style="display: flex;" id="carSelector"></div>
+    <button onclick="startGame()">Mulai Game</button>
+  </div>
+
+  <!-- Game Over -->
+  <div id="gameOver" style="display: none;">
+    <h2>💥 Game Over 💥</h2>
+    <div id="finalScore"></div>
+    <button onclick="location.reload()">Main Lagi</button>
+  </div>
+</div>
+
+<!-- Suara -->
+<audio id="crashSound" src="https://www.soundjay.com/transportation/car-crash-1.mp3" preload="auto"></audio>
+<audio id="bgMusic" src="https://files.freemusicarchive.org/storage-freemusicarchive-org/music/no_curator/Kevin_MacLeod/Arcadia/Kevin_MacLeod_-_Arcadia.mp3" preload="auto" loop></audio>
+
+<script>
+  const car = document.getElementById("car");
+  const gameContainer = document.getElementById("gameContainer");
+  const roadLines = document.getElementById("roadLines");
+  const scoreBoard = document.getElementById("scoreBoard");
+  const crashSound = document.getElementById("crashSound");
+  const bgMusic = document.getElementById("bgMusic");
+  const overlay = document.getElementById("overlay");
+  const carSelector = document.getElementById("carSelector");
+  const gameOverDisplay = document.getElementById("gameOver");
+  const finalScore = document.getElementById("finalScore");
+
+  const carSkins = [
+    "https://i.ibb.co/SyP5J6d/car.png",
+    "https://i.ibb.co/x5fNQhG/blue-car.png",
+    "https://i.ibb.co/D7MStTd/green-car.png"
+  ];
+
+  let selectedCarSkin = carSkins[0];
+  let carX = 175;
+  let score = 0;
+  let highScore = localStorage.getItem("highscore") || 0;
+  let speed = 5;
+  let running = false;
+
+  // Tampilkan skin mobil
+  carSkins.forEach((src, i) => {
+    const img = document.createElement("div");
+    img.className = "car-option";
+    img.style.backgroundImage = `url('${src}')`;
+    if (i === 0) img.classList.add("selected");
+    img.onclick = () => {
+      document.querySelectorAll(".car-option").forEach(opt => opt.classList.remove("selected"));
+      img.classList.add("selected");
+      selectedCarSkin = src;
+    };
+    carSelector.appendChild(img);
+  });
+
+  // Kontrol sentuh
+  gameContainer.addEventListener("touchstart", (e) => {
+    const x = e.touches[0].clientX - gameContainer.getBoundingClientRect().left;
+    if (x < 200 && carX > 0) carX -= 50;
+    else if (x > 200 && carX < 350) carX += 50;
+    car.style.left = carX + "px";
+  });
+
+  // Kontrol keyboard
+  document.addEventListener("keydown", (e) => {
+    if (!running) return;
+    if (e.key === "ArrowLeft" && carX > 0) carX -= 25;
+    else if (e.key === "ArrowRight" && carX < 350) carX += 25;
+    car.style.left = carX + "px";
+  });
+
+  function startGame() {
+    overlay.style.display = "none";
+    running = true;
+    car.style.backgroundImage = `url('${selectedCarSkin}')`;
+    car.style.left = carX + "px";
+    bgMusic.volume = 0.5;
+    bgMusic.play();
+    moveLines();
+    generateObstacles();
+    updateScore();
+  }
+
+  function moveLines() {
+    for (let i = 0; i < 6; i++) {
+      const line = document.createElement("div");
+      line.classList.add("line");
+      line.style.top = (i * 100) + "px";
+      roadLines.appendChild(line);
+    }
+
+    let offset = 0;
+    setInterval(() => {
+      offset += speed;
+      document.querySelectorAll(".line").forEach((line, i) => {
+        line.style.top = ((i * 100 + offset) % 600) + "px";
+      });
+    }, 30);
+  }
+
+  function generateObstacles() {
+    const interval = setInterval(() => {
+      if (!running) {
+        clearInterval(interval);
+        return;
+      }
+
+      const obstacle = document.createElement("div");
+      obstacle.className = "obstacle";
+      obstacle.style.left = Math.floor(Math.random() * 8) * 50 + "px";
+      gameContainer.appendChild(obstacle);
+
+      let top = -100;
+      const move = setInterval(() => {
+        if (!running) {
+          clearInterval(move);
+          return;
+        }
+
+        top += speed;
+        obstacle.style.top = top + "px";
+
+        if (top > 600) {
+          clearInterval(move);
+          gameContainer.removeChild(obstacle);
+        }
+
+        const carRect = car.getBoundingClientRect();
+        const obsRect = obstacle.getBoundingClientRect();
+
+        if (
+          carRect.left < obsRect.right &&
+          carRect.right > obsRect.left &&
+          carRect.top < obsRect.bottom &&
+          carRect.bottom > obsRect.top
+        ) {
+          running = false;
+          bgMusic.pause();
+          crashSound.play();
+          finalScore.innerHTML = `Skor: ${score}<br>Skor Tertinggi: ${highScore}`;
+          gameOverDisplay.style.display = "flex";
+        }
+      }, 20);
+    }, 1200);
+  }
+
+  function updateScore() {
+    const loop = setInterval(() => {
+      if (!running) {
+        clearInterval(loop);
+        return;
+      }
+
+      score++;
+      if (score > highScore) {
+        highScore = score;
+        localStorage.setItem("highscore", highScore);
+      }
+
+      scoreBoard.textContent = `Skor: ${score} | Tertinggi: ${highScore}`;
+
+      if (score % 10 === 0 && speed < 15) speed++;
+    }, 500);
+  }
+</script>
+</body>
+</html>
